@@ -1,19 +1,20 @@
 BaseSQLHelper
 =============
-
+ ```php
 // USAGE.
 
 class ClassName extends BaseDBHelper {
 
     public $tablename = 'your table name';
-
+    public $primary_key = 'if default primary key is not id mention it here.';
 }
-
+ ```
+ ```php
 // UPDATE
 User::getInstance()
 		->set(array(
 			'id' => 105,
-			'name' => "TestType is updated"
+			'name' => "TestName is updated"
 		))->save();
 //OR 
 User::getInstance()->set(array('id' => $id))->update();
@@ -23,7 +24,7 @@ User::getInstance()->set(array('id' => $id))->update('id = ?',array($id));
 // INSERT
 User::getInstance()
 		->set(array(
-			'name' => "TestType is updated"
+			'name' => "TestName is added"
 		))
                 ->save();
 
@@ -47,3 +48,4 @@ User::getInstance()
 User::getInstance()->delete('id = ?', array($id));
 // OR 
 User::getInstance()->set(array('id' => $id))->delete();
+ ```
