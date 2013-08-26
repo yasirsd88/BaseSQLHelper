@@ -63,3 +63,34 @@ User::getInstance()->delete('id = ?', array($id));
 // OR 
 User::getInstance()->set(array('id' => $id))->delete();
  ```
+```php 
+ // SAMPLE OUTPUT
+ 
+ Array
+(
+    [0] => Array
+        (
+            [User] => Array
+                (
+                    [id] => 1
+                    [name] => yasir
+                    [email] => yasir.mehmood@tset.com
+                    [created_at] => 2013-06-11 00:25:23
+                )
+
+        )
+
+    [1] => Array
+        (
+            [User] => Array
+                (
+                    [id] => 2
+                    [name] => yasir
+                    [email] => yasir.mehmood@tset.com
+                    [last_login] => 2013-06-11 00:25:23
+                )
+
+        )
+
+)
+```
