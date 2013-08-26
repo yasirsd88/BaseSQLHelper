@@ -48,10 +48,13 @@ class BaseDB {
     }
 
     function __construct() {
-        $this->db = $GLOBALS['connection'];
+        $this->db = @mysql_connect(HOST, USERNAME, PASSWORD);
         if (!$this->db)
             die($this->debug(true));
         mysql_set_charset('utf8', $this->db);
+        $selectdb = @mysql_select_db(DATABASE);
+        if (!$selectdb)
+            die($this->debug());
     }
 
     // end constructor
