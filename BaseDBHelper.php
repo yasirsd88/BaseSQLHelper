@@ -433,6 +433,7 @@ class BaseDBHelper {
             }
             $this->data[$this->_primary_key] = $this->_db->insert($this->_table, $array);
         }
+        return $this->data;
     }
 
     public function fetchFirst() {
@@ -454,6 +455,7 @@ class BaseDBHelper {
         }
         return $objectsArray;
     }
+
 
 }
 
