@@ -21,9 +21,26 @@ class ClassName extends BaseDBHelper {
 
     public $tablename = 'your table name';
     public $primary_key = 'if default primary key is not id mention it here.';
+	public $relations = array(
+        'hasOne' => array('User','Profile'),
+        'hasMany' => array('Posts')
+    );
+
+    public function functionName($user_id) {
+        return $this->select('User.*,Profile.*')
+                        ->from("$this->tablename User")
+                        ->join('profile Profile ON Profile.user_id = User.id')
+						->left('posts Posts ON Posts.user_id = User.id')
+                        ->where('User.id = ?', array($user_id))
+                        ->executeModel()
+                        ->fetchAll();
+    }
 }
  ```
  ```php
+// NEW UPDATES
+User::getInstance()->fields('id,name')->find()->execute()->fetchAll();
+ 
 // UPDATE
 User::getInstance()
 		->set(array(
@@ -93,4 +110,36 @@ User::getInstance()->set(array('id' => $id))->delete();
         )
 
 )
+```
+
+```php 
+ // SAMPLE OUTPUT USING EXECUTEMODEL
+ 
+ Array
+        (
+            [User] => Array
+                (
+                    [id] => 1
+                    [name] => yasir
+                    [email] => yasir.mehmood@tset.com
+                    [created_at] => 2013-06-11 00:25:23
+                )
+			[Profile] => Array
+				(
+					//DATA 
+				)
+			[Posts] => Array
+				(
+					[0] => Array
+					(
+						//DATA 
+					)
+					[1] => Array
+					(
+						//DATA 
+					)
+				)
+
+        )
+
 ```

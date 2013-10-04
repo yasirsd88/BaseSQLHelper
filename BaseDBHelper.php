@@ -5,6 +5,9 @@
  *
  * @author yasirmehmood
  */
+//$base_path = realpath(__DIR__) . DIRECTORY_SEPARATOR;
+//require_once $base_path . 'Validator.php';
+
 class singleton {
 
 // ensure that only a single instance exists for each class. {
@@ -42,19 +45,17 @@ class singleton {
 class BaseDB {
 
     protected $db;
+    private $relations;
 
     public static function getIntance() {
         return singleton::getInstance('BaseDB');
     }
 
     function __construct() {
-        $this->db = @mysql_connect(HOST, USERNAME, PASSWORD);
+        $this->db = $GLOBALS['connection'];
         if (!$this->db)
             die($this->debug(true));
         mysql_set_charset('utf8', $this->db);
-        $selectdb = @mysql_select_db(DATABASE);
-        if (!$selectdb)
-            die($this->debug());
     }
 
     // end constructor
@@ -75,6 +76,68 @@ class BaseDB {
             $output[$n] = $row;
         }
         return $output;
+    }
+
+    /**
+     *
+     * @param type $resource
+     * @return type 
+     */
+    // remove duplicate elements from n-dimensional arrays
+    function uniqueArray($nDimArray) {
+        foreach ($nDimArray as $key => $val) {
+            $nDimArray[$key] = array_map("unserialize", array_unique(array_map("serialize", $val)));
+            foreach ($nDimArray[$key] as $key1 => $val1) {
+                $nDimArray[$key][$key1] = array_filter($val1);
+            }
+            $nDimArray[$key] = array_filter($nDimArray[$key]);
+        }
+        return $nDimArray;
+    }
+
+    function mysql_fetch_qualified_array($resource) {
+        $count = 0;
+        $qualifiedarray = array();
+        while ($basearray = mysql_fetch_array($resource)) {
+            $temp = array();
+            for ($i = 0; $i < mysql_num_fields($resource); $i++) {
+                $table = mysql_field_table($resource, $i);
+                $field = mysql_field_name($resource, $i);
+                if ($this->relations) {
+                    if ($count == 0 && key_exists('hasOne', $this->relations) && in_array($table, $this->relations['hasOne'])) {
+                        $qualifiedarray[$table][$field] = $basearray[$i];
+                    } else {
+                        if (!(key_exists('hasOne', $this->relations) && in_array($table, $this->relations['hasOne'])))
+                            $qualifiedarray[$table][$count][$field] = $basearray[$i];
+                    }
+                }else {
+                    $qualifiedarray[$count][$table][$field] = $basearray[$i];
+                }
+            }
+            $count++;
+        }
+        return $this->uniqueArray($qualifiedarray);
+    }
+
+    /**
+     *
+     * @param type $query
+     * @param type $maxRows
+     * @param type $pageNum
+     * @return type 
+     */
+    function select_model($query, $relations, $maxRows = 0, $pageNum = 0) {
+        $this->query = $query;
+        $this->relations = $relations;
+        // start limit if $maxRows is greater than 0
+        if ($maxRows > 0) {
+            $startRow = $pageNum * $maxRows;
+            $query = sprintf("%s LIMIT %d, %d", $query, $startRow, $maxRows);
+        }
+        $result = mysql_query($query, $this->db);
+        if ($this->error())
+            die($this->debug());
+        return $this->mysql_fetch_qualified_array($result);
     }
 
 // end select
@@ -227,6 +290,8 @@ class BaseDB {
                 break;
         }
         $output = "<b style='font-family: Arial, Helvetica, sans-serif; color: #0B70CE;'>" . $message . "</b><br />\n<span style='font-family: Arial, Helvetica, sans-serif; color: #000000;'>" . $result . "</span><br />\n<p style='Courier New, Courier, mono; border: 1px dashed #666666; padding: 10px; color: #000000;'>" . $query . "</p>\n";
+        if (!defined('ENVIRONMENT'))
+            define('ENVIRONMENT', 'DEVELOPMENT');
         if (ENVIRONMENT == 'DEVELOPMENT') {
             echo $output;
         }
@@ -251,6 +316,14 @@ class BaseDB {
         mysql_close($this->db);
     }
 
+    static function getSlug($title) {
+        $finalSlug = mb_strtolower($title);
+        $finalSlug = preg_replace('/[^a-zA-Z0-9-_ \[\]\.\(\)]/s', '', $finalSlug);
+        $finalSlug = str_replace(" ", "-", $finalSlug);
+        $finalSlug = str_replace("--", "-", $finalSlug);
+        return $finalSlug;
+    }
+
 }
 
 /**
@@ -265,6 +338,7 @@ class BaseDBHelper {
     private $_primary_key = 'id';
     private $_class = '';
     private $_prefix = '';
+    private $fields = '*';
     private $_db;
     private $_query;
     private $query;
@@ -320,23 +394,35 @@ class BaseDBHelper {
         return $this;
     }
 
-    public function left($join = '') {
+    public function get_query() {
+        return $this->_query;
+    }
+
+    public function getQuery() {
+        return $this->query;
+    }
+
+    public function left($join = '', $values = array()) {
         $this->_query .= "LEFT JOIN $join ";
+        $this->_query = $this->populateValues($this->_query, $values);
         return $this;
     }
 
-    public function right($join = '') {
+    public function right($join = '', $values = array()) {
         $this->_query .= "RIGHT JOIN $join ";
+        $this->_query = $this->populateValues($this->_query, $values);
         return $this;
     }
 
-    public function join($join = '') {
+    public function join($join = '', $values = array()) {
         $this->_query .= "INNER JOIN $join ";
+        $this->_query = $this->populateValues($this->_query, $values);
         return $this;
     }
 
     public function group($group = '') {
         $this->_query .= "GROUP BY $group ";
+        $this->_query = $this->populateValues($this->_query, $values);
         return $this;
     }
 
@@ -355,14 +441,35 @@ class BaseDBHelper {
         return $this;
     }
 
+    public function executeModel() {
+        $this->query = $this->_query;
+        $this->queryModelRecord();
+        return $this;
+    }
+
     private function SQLINJECTION($values) {
-        foreach ($values as $key => $value) {
-            $values[$key] = db::SQLSafe($value);
+        if (is_array($values)) {
+            foreach ($values as $key => $value) {
+                $values[$key] = BaseDB::SQLSafe($value);
+            }
         }
         return $values;
     }
 
-    private function populateValues($string, $values) {
+    protected function cleanValues($values) {
+        foreach ($values as $key => $value) {
+            $values[$key] = BaseDB::SQLSafe($value);
+        }
+        return $values;
+    }
+
+    public function fields($fields) {
+        $this->fields = $fields;
+        return $this;
+    }
+
+    public function populateValues($string, $values) {
+        $values = $this->SQLINJECTION($values);
         return (count($values) > 0) ? preg_replace(array_fill(0, count($values), "/\?/"), $values, $string, 1) : $string;
     }
 
@@ -378,6 +485,12 @@ class BaseDBHelper {
         return $this->collection;
     }
 
+    public function queryModelRecord() {
+        $relations = isset($this->relations) ? $this->relations : array();
+        $this->collection = $this->_db->select_model($this->query, $relations);
+        return $this->collection;
+    }
+
     public function set($data = array()) {
         $this->data = $data;
         return $this;
@@ -389,14 +502,14 @@ class BaseDBHelper {
 
     public function find($data = 'all') {
         if ($data == 'all')
-            $this->_query = "SELECT * FROM " . $this->_table . " ";
+            $this->_query = "SELECT $this->fields FROM " . $this->_table . " ";
         else
-            $this->_query = "SELECT * FROM " . $this->_table . " LIMIT 1 ";
+            $this->_query = "SELECT $this->fields FROM " . $this->_table . " LIMIT 1 ";
         return $this;
     }
 
     public function filter($condition, $values = array()) {
-        $this->query = "SELECT * FROM " . $this->_table . " WHERE $condition";
+        $this->query = "SELECT $this->fields FROM " . $this->_table . " WHERE $condition";
         return $this->query($this->query, $values);
     }
 
@@ -415,6 +528,71 @@ class BaseDBHelper {
             $condition = $this->populateValues($condition, $values);
         }
         return $this->_db->update($this->_table, $data, $condition);
+    }
+
+    public function saveifnotexist() {
+        $fields = "";
+        $values = "";
+        $count = 0;
+        $condition = "";
+        $data_values = $this->data;
+        $this->data = $this->SQLINJECTION($this->data);
+        foreach ($this->data as $key => $val) {
+            if ($count == 0) {
+                $fields = "`" . $key . "`";
+                $values = $val;
+                $condition = " $key = ? ";
+            } else {
+                $fields .= ", " . "`" . $key . "`";
+                $values .= ", " . $val;
+                $condition .= "AND  $key = ? ";
+            }
+            $count++;
+        }
+        $condition = $this->populateValues($condition, $data_values);
+        $this->_query = "INSERT INTO $this->_table($fields) ";
+        $this->_query .= "(SELECT $values FROM $this->_table ";
+        $this->_query .= "WHERE (SELECT count(*) FROM $this->_table WHERE $condition) = 0 LIMIT 1) ";
+        return $this;
+    }
+
+    public function prepareInsert($data) {
+        $this->query = "";
+        $dbfields = array();
+        $insertdata = array();
+        foreach ($data as $value) {
+            if (empty($dbfields)) {
+                foreach ($value as $index => $val) {
+                    $dbfields[] = $index;
+                }
+            }
+            break;
+        }
+        $this->query = "INSERT INTO $this->_table(" . implode(",", $dbfields) . ") ";
+        foreach ($data as $key => $value) {
+            $temp = array();
+            foreach ($dbfields as $column) {
+                $temp[] = $value[$column];
+            }
+            $temp = $this->SQLINJECTION($temp);
+            $insertdata[$key] = " (" . implode(",", $temp) . ") ";
+        }
+        $vals = implode(",", $insertdata);
+        $this->rawQuery($this->query . " VALUES " . $vals);
+    }
+
+    public function getAllInsertedIds($last_id, $limit = 1) {
+        $this->_query = "SELECT $this->_primary_key FROM $this->_table WHERE $this->_primary_key > $last_id LIMIT $limit";
+        return $this->execute()->fetchAll();
+    }
+
+    public function getLastRowId() {
+        $this->_query = "SELECT $this->_primary_key FROM $this->_table ORDER BY $this->_primary_key DESC LIMIT 1";
+        return $this->execute()->fetchFirst();
+    }
+
+    function rawQuery($query) {
+        $this->_db->misc($query);
     }
 
     public function save() {
@@ -455,7 +633,6 @@ class BaseDBHelper {
         }
         return $objectsArray;
     }
-
 
 }
 
