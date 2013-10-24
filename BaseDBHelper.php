@@ -86,11 +86,15 @@ class BaseDB {
     // remove duplicate elements from n-dimensional arrays
     function uniqueArray($nDimArray) {
         foreach ($nDimArray as $key => $val) {
-            $nDimArray[$key] = array_map("unserialize", array_unique(array_map("serialize", $val)));
+            if (count($val) != count($val, COUNT_RECURSIVE))
+                $nDimArray[$key] = array_map("unserialize", array_unique(array_map("serialize", $val)));
             foreach ($nDimArray[$key] as $key1 => $val1) {
-                $nDimArray[$key][$key1] = array_filter($val1);
+                if (is_array($val1))
+                    $nDimArray[$key][$key1] = array_filter($val1);
             }
             $nDimArray[$key] = array_filter($nDimArray[$key]);
+            if (count($val) != count($val, COUNT_RECURSIVE))
+                $nDimArray[$key] = array_values($nDimArray[$key]);
         }
         return $nDimArray;
     }
